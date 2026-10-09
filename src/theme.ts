@@ -1,24 +1,38 @@
 import { MD3DarkTheme, type MD3Theme } from "react-native-paper";
 
-// t3-style dark: near-black zinc, single indigo accent, sharp corners.
+// shadcn zinc + Material 3 structure: monochrome surfaces, white primary
+// (shadcn default button), tonal grays, M3 outlined cards, 12dp radii.
 export const theme: MD3Theme = {
   ...MD3DarkTheme,
-  roundness: 2,
+  roundness: 12,
   colors: {
     ...MD3DarkTheme.colors,
-    primary: "#818cf8",
+    primary: "#fafafa",
     onPrimary: "#09090b",
-    primaryContainer: "#312e81",
-    onPrimaryContainer: "#e0e7ff",
+    primaryContainer: "#27272a",
+    onPrimaryContainer: "#fafafa",
+    secondary: "#a1a1aa",
+    onSecondary: "#09090b",
+    secondaryContainer: "#1e1e22",
+    onSecondaryContainer: "#e4e4e7",
+    tertiary: "#a1a1aa",
+    onTertiary: "#09090b",
+    tertiaryContainer: "#1e1e22",
+    onTertiaryContainer: "#e4e4e7",
     background: "#09090b",
     onBackground: "#fafafa",
-    surface: "#101013",
+    surface: "#111114",
     onSurface: "#fafafa",
-    surfaceVariant: "#18181c",
+    surfaceVariant: "#1a1a1f",
     onSurfaceVariant: "#a1a1aa",
+    surfaceDisabled: "rgba(250,250,250,0.12)",
+    onSurfaceDisabled: "rgba(250,250,250,0.38)",
     outline: "#27272a",
-    outlineVariant: "#1c1c20",
+    outlineVariant: "#1e1e22",
     error: "#f87171",
+    onError: "#09090b",
+    errorContainer: "#3f1d24",
+    onErrorContainer: "#fecdd3",
   },
 };
 

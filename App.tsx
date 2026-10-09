@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
-  ActivityIndicator,
-  Appbar,
   Button,
   Card,
   Chip,
@@ -21,10 +19,12 @@ import TcpSocket from "react-native-tcp-socket";
 import { PORT } from "@/config";
 import { theme, mono } from "@/theme";
 import { sendFile, startReceiver } from "@/lib/transfer";
-import { discoverUdp, isLocalhost, scanSubnet, testHost, type Peer } from "@/lib/discover";
+import { discoverUdp, isLocalhost, testHost, type Peer } from "@/lib/discover";
 import { fmtSize } from "@/lib/format";
 
 type Server = InstanceType<typeof TcpSocket.Server>;
+
+const MUTED = theme.colors.onSurfaceVariant;
 
 export default function App() {
   const [ip, setIp] = useState("");
@@ -40,12 +40,10 @@ export default function App() {
   const [fileSize, setFileSize] = useState(0);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
   const [snack, setSnack] = useState("");
 
   const port = Number(portStr) || PORT;
-  const push = (m: string) =>
-    setLog((l) => [`${new Date().toLocaleTimeString()} ${m}`, ...l].slice(0, 50));
+  const fail = (m: string) => setSnack(m);
   const remember = (h: string) =>
     setRecent((r) => [h, ...r.filter((x) => x !== h)].slice(0, 5));
 
@@ -59,25 +57,19 @@ export default function App() {
     if (server) {
       server.close();
       setServer(null);
-      push("receiver stopped");
       return;
     }
     try {
       const s = startReceiver(port, {
-        onOffer: (h) => {
-          push(`offer ${h.name} (${fmtSize(h.size)}) — accepting`);
-          return true;
-        },
+        onOffer: () => true,
         onFile: (f, h) => {
-          push(`saved ${h.name}`);
           setSnack(`${h.name} received`);
         },
-        onError: (e) => push(`rx: ${e.message}`),
+        onError: (e) => fail(`Receive error: ${e.message}`),
       });
       setServer(s);
-      push(`listening on :${port}`);
     } catch (e) {
-      push(`listen failed: ${e instanceof Error ? e.message : e}`);
+      fail(`Couldn't start receiver: ${e instanceof Error ? e.message : e}`);
     }
   };
 
@@ -89,48 +81,29 @@ export default function App() {
       setFileUri(f.uri);
       setFileName(f.name);
       setFileSize(f.size ?? 0);
-      push(`picked ${f.name} (${fmtSize(f.size ?? 0)})`);
     } catch (e) {
-      push(`pick failed: ${e instanceof Error ? e.message : e}`);
+      fail(`Couldn't pick file: ${e instanceof Error ? e.message : e}`);
     }
   };
 
-  const scan = async (deep = false) => {
+  const scan = async () => {
     if (!ip || ip === "unknown") {
-      push("no local IP yet — check Wi-Fi, then retry");
+      fail("No local IP yet — check Wi-Fi, then retry");
       return;
     }
     setScanning(true);
     try {
-      if (!deep) {
-        setScanMsg("shouting on LAN…");
-        const found = await discoverUdp(ip, port, (m) => push(m));
-        setPeers(found);
-        if (found.length === 0) {
-          setScanMsg("nothing heard — try deep scan, or type the IP");
-          push("udp: silence — old receiver? try deep scan");
-        } else {
-          setScanMsg(`${found.length} found`);
-          push(`scan: ${found.map((p) => p.host).join(", ")}`);
-          if (!host) setHost(found[0].host);
-        }
-        return;
-      }
-      setScanMsg("scanning…");
-      const found = await scanSubnet(ip, port, {
-        onProgress: (c, t) => setScanMsg(`scanning ${c}/${t}…`),
-      });
+      setScanMsg("broadcasting…");
+      const found = await discoverUdp(ip, port);
       setPeers(found);
       if (found.length === 0) {
-        push(`scan: nothing on :${port} — recv running on your PC?`);
-        setScanMsg("nothing found");
+        setScanMsg("no receivers found");
       } else {
-        push(`scan: ${found.map((p) => p.host).join(", ")}`);
-        setScanMsg(`${found.length} found`);
+        setScanMsg(`${found.length} receiver${found.length > 1 ? "s" : ""} found`);
         if (!host) setHost(found[0].host);
       }
     } catch (e) {
-      push(`scan failed: ${e instanceof Error ? e.message : e}`);
+      fail(`Scan failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       setScanning(false);
     }
@@ -138,13 +111,26 @@ export default function App() {
 
   const test = async () => {
     if (!host || isLocalhost(host)) return;
-    await testHost(host.trim(), port, (m) => push(m));
+    setScanMsg("testing…");
+    try {
+      const lines: string[] = [];
+      const peer = await testHost(host.trim(), port, (m) => lines.push(m));
+      if (peer) {
+        setScanMsg(`reachable: ${peer.host}:${peer.port}`);
+      } else {
+        setScanMsg("unreachable");
+        fail(`Can't reach ${host.trim()}:${port}`);
+      }
+    } catch (e) {
+      setScanMsg("unreachable");
+      fail(`Test failed: ${e instanceof Error ? e.message : e}`);
+    }
   };
 
   const send = async () => {
     if (!fileUri) return;
     if (isLocalhost(host)) {
-      push("localhost = this phone, not your PC — scan instead");
+      fail("Localhost is this phone, not the peer");
       return;
     }
     setBusy(true);
@@ -156,12 +142,11 @@ export default function App() {
         port,
         f,
         ({ sent, total }) => setProgress(total ? sent / total : 0),
-        (m) => push(m),
       );
-      push(`sent ${f.name} (${fmtSize(n)}) → ${host}:${port}`);
+      setSnack(`Sent ${f.name} (${fmtSize(n)})`);
       remember(host.trim());
     } catch (e) {
-      push(`send failed: ${e instanceof Error ? e.message : e}`);
+      fail(`Send failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       setBusy(false);
     }
@@ -171,194 +156,178 @@ export default function App() {
     <PaperProvider theme={theme}>
       <SafeAreaProvider>
         <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-          <Appbar.Header mode="small" style={styles.bar}>
-            <Appbar.Content
-              title="localdrop"
-              titleStyle={styles.wordmark}
-              subtitle={`${ip || "…"}:${port}`}
-              subtitleStyle={styles.monoDim}
-            />
-            <Chip
-              icon={server ? "access-point" : "access-point-off"}
-              mode="outlined"
-              compact
-              textStyle={styles.chipText}
-            >
-              {server ? "live" : "off"}
-            </Chip>
-          </Appbar.Header>
+          <View style={styles.header}>
+            <Text style={styles.wordmark}>localdrop</Text>
+            <Text style={styles.ip}>
+              {ip || "…"}:{port}
+            </Text>
+          </View>
+          <Divider style={styles.hairline} />
 
           <ScrollView contentContainerStyle={styles.root}>
             <Card mode="outlined" style={styles.card}>
-              <Card.Title
-                title="receive"
-                titleStyle={styles.cardTitle}
-                left={(p) => <List.Icon {...p} icon="download" />}
-                right={() => (
-                  <Button
-                    mode={server ? "outlined" : "contained"}
-                    onPress={toggleServer}
-                    compact
-                    style={styles.cardBtn}
-                  >
-                    {server ? "stop" : `listen :${port}`}
-                  </Button>
+              <Card.Content style={styles.cardPad}>
+                <View style={styles.sectionHead}>
+                  <List.Icon icon="download" color={MUTED} style={styles.headIcon} />
+                  <View style={styles.sectionText}>
+                    <Text style={styles.cardTitle}>Receive</Text>
+                    <Text style={styles.cardSub}>
+                      {server ? "Accepting incoming files" : "Start the receiver"}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.gap}>
+                <Button
+                  mode={server ? "outlined" : "contained"}
+                  icon={server ? "stop" : "play"}
+                  onPress={toggleServer}
+                  style={styles.btn}
+                >
+                  {server ? "stop" : `listen :${port}`}
+                </Button>
+                {server && (
+                  <View style={styles.code}>
+                    <Text style={styles.codeText}>
+                      ./tools/send -addr {ip}:{port} -file {"<path>"}
+                    </Text>
+                  </View>
                 )}
-              />
-              <Card.Content>
-                <Text variant="bodySmall" style={styles.dim}>
-                  {server
-                    ? `accepting files — from your PC: go run ./tools/send -addr ${ip}:${port} -file <path>`
-                    : "start the receiver, then send to this device from a peer"}
-                </Text>
+                </View>
               </Card.Content>
             </Card>
 
             <Card mode="outlined" style={styles.card}>
-              <Card.Title
-                title="send"
-                titleStyle={styles.cardTitle}
-                left={(p) => <List.Icon {...p} icon="upload" />}
-              />
-              <Card.Content style={styles.gap}>
+              <Card.Content style={styles.cardPad}>
+                <View style={styles.sectionHead}>
+                  <List.Icon icon="upload" color={MUTED} style={styles.headIcon} />
+                  <View style={styles.sectionText}>
+                    <Text style={styles.cardTitle}>Send</Text>
+                    <Text style={styles.cardSub}>Pick a file and a destination</Text>
+                  </View>
+                </View>
+                <View style={styles.gap}>
                 <List.Item
-                  title={fileName || "no file picked"}
-                  description={fileName ? fmtSize(fileSize) : "tap pick to choose"}
-                  titleStyle={fileName ? undefined : styles.dim}
-                  left={(p) => <List.Icon {...p} icon="file-outline" />}
+                  title={fileName || "No file selected"}
+                  description={fileName ? fmtSize(fileSize) : "Choose a file"}
+                  titleStyle={fileName ? styles.fileName : styles.dim}
+                  descriptionStyle={styles.dim}
+                  left={(p) => (
+                    <List.Icon {...p} icon="file-outline" color={MUTED} />
+                  )}
                   right={() => (
-                    <Button mode="outlined" compact onPress={pick}>
-                      pick
+                    <Button mode="contained-tonal" compact onPress={pick} style={styles.btnSm}>
+                      Browse
                     </Button>
                   )}
                   style={styles.fileRow}
                 />
                 <View style={styles.row}>
                   <TextInput
-                    label="host"
+                    label="Host"
                     value={host}
                     onChangeText={setHost}
                     placeholder="192.168.1.x"
                     autoCapitalize="none"
                     mode="outlined"
                     dense
+                    outlineStyle={styles.inputOutline}
                     style={[styles.input, styles.hostInput]}
                   />
                   <TextInput
-                    label="port"
+                    label="Port"
                     value={portStr}
                     onChangeText={setPortStr}
                     keyboardType="numeric"
                     autoCapitalize="none"
                     mode="outlined"
                     dense
+                    outlineStyle={styles.inputOutline}
                     style={[styles.input, styles.portInput]}
                   />
                 </View>
                 {isLocalhost(host) && !!host && (
                   <Text variant="bodySmall" style={styles.warn}>
-                    localhost is this phone, not your PC — scan instead.
+                    Localhost refers to this phone, not the peer.
                   </Text>
                 )}
                 {peers.length > 0 && (
-                  <View style={styles.chips}>
-                    {peers.map((p) => (
-                      <Chip
-                        key={p.host}
-                        selected={host === p.host}
-                        showSelectedCheck={false}
-                        icon="laptop"
-                        onPress={() => {
-                          setHost(p.host);
-                          remember(p.host);
-                        }}
-                        style={styles.chip}
-                        textStyle={styles.monoSm}
-                      >
-                        {p.host}
-                      </Chip>
-                    ))}
+                  <View style={styles.gapSm}>
+                    <Text style={styles.label}>Discovered</Text>
+                    <View style={styles.chips}>
+                      {peers.map((p) => (
+                        <Chip
+                          key={p.host}
+                          selected={host === p.host}
+                          showSelectedCheck={false}
+                          icon="laptop"
+                          mode="outlined"
+                          compact
+                          onPress={() => {
+                            setHost(p.host);
+                            remember(p.host);
+                          }}
+                          style={styles.chip}
+                          textStyle={styles.monoSm}
+                        >
+                          {p.name ? `${p.name} · ${p.host}` : p.host}
+                        </Chip>
+                      ))}
+                    </View>
                   </View>
                 )}
                 {recent.length > 0 && (
-                  <View style={styles.chips}>
-                    {recent.map((h) => (
-                      <Chip
-                        key={h}
-                        icon="history"
-                        onPress={() => setHost(h)}
-                        style={styles.chip}
-                        textStyle={styles.monoSm}
-                      >
-                        {h}
-                      </Chip>
-                    ))}
+                  <View style={styles.gapSm}>
+                    <Text style={styles.label}>Recent</Text>
+                    <View style={styles.chips}>
+                      {recent.map((h) => (
+                        <Chip
+                          key={h}
+                          icon="history"
+                          mode="outlined"
+                          compact
+                          onPress={() => setHost(h)}
+                          style={styles.chip}
+                          textStyle={styles.monoSm}
+                        >
+                          {h}
+                        </Chip>
+                      ))}
+                    </View>
                   </View>
                 )}
-                {!!scanMsg && <Text style={styles.monoDim}>{scanMsg}</Text>}
+                {!!scanMsg && <Text style={styles.scanMsg}>{scanMsg}</Text>}
                 <View style={styles.row}>
                   <Button
-                    mode="outlined"
+                    mode="contained-tonal"
                     icon="radar"
-                    onPress={() => scan(false)}
+                    onPress={scan}
+                    loading={scanning}
                     disabled={scanning}
-                    compact
-                    style={styles.flex}
+                    style={[styles.flex, styles.btn]}
                   >
-                    scan
+                    Scan
                   </Button>
                   <Button
-                    mode="text"
+                    mode="outlined"
                     icon="lan-connect"
                     onPress={test}
                     disabled={!host || isLocalhost(host)}
-                    compact
-                    style={styles.flex}
+                    style={[styles.flex, styles.btn]}
                   >
-                    test
+                    Test
                   </Button>
                 </View>
-                <Button
-                  mode="text"
-                  onPress={() => scan(true)}
-                  disabled={scanning}
-                  compact
-                >
-                  deep scan (slow)
-                </Button>
-                {busy && <ProgressBar progress={progress} style={styles.bar2} />}
+                {busy && <ProgressBar progress={progress} />}
                 <Button
                   mode="contained"
                   icon="send"
                   onPress={send}
                   disabled={busy || !fileUri || !host}
+                  style={styles.btn}
                 >
-                  {busy ? "sending…" : "send"}
+                  {busy ? `Sending ${Math.round(progress * 100)}%` : "Send"}
                 </Button>
-              </Card.Content>
-            </Card>
-
-            <Card mode="outlined" style={styles.card}>
-              <Card.Title
-                title="log"
-                titleStyle={styles.cardTitle}
-                left={(p) => <List.Icon {...p} icon="console" />}
-                right={() =>
-                  scanning ? <ActivityIndicator size={18} style={styles.spin} /> : null
-                }
-              />
-              <Card.Content>
-                <Divider style={styles.div} />
-                {log.length === 0 && (
-                  <Text variant="bodySmall" style={styles.dim}>
-                    quiet — nothing yet.
-                  </Text>
-                )}
-                {log.map((l, i) => (
-                  <Text key={i} style={styles.logLine}>
-                    {l}
-                  </Text>
-                ))}
+                </View>
               </Card.Content>
             </Card>
           </ScrollView>
@@ -379,28 +348,58 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.background },
-  bar: { backgroundColor: theme.colors.background },
-  wordmark: { fontFamily: mono, fontWeight: "700", letterSpacing: 0 },
-  monoDim: { fontFamily: mono, fontSize: 11, color: theme.colors.onSurfaceVariant },
-  monoSm: { fontFamily: mono, fontSize: 12 },
-  chipText: { fontFamily: mono, fontSize: 11 },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 2,
+  },
+  wordmark: {
+    fontSize: 20,
+    fontWeight: "700",
+    letterSpacing: -0.5,
+    color: theme.colors.onBackground,
+  },
+  ip: { fontFamily: mono, fontSize: 12, color: MUTED },
+  hairline: { backgroundColor: theme.colors.outlineVariant },
   root: { padding: 16, gap: 12, paddingBottom: 32 },
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline },
-  cardTitle: { fontFamily: mono, fontSize: 14, letterSpacing: 1 },
-  cardBtn: { marginRight: 8 },
-  dim: { color: theme.colors.onSurfaceVariant },
+  card: { backgroundColor: theme.colors.surface, borderRadius: 16 },
+  cardPad: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 },
+  sectionHead: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  headIcon: { margin: 0, marginRight: 4 },
+  sectionText: { flex: 1 },
+  cardTitle: { fontSize: 15, fontWeight: "600" },
+  cardSub: { fontSize: 13, color: MUTED },
+  dim: { color: MUTED },
   warn: { color: theme.colors.error },
-  gap: { gap: 10 },
+  gap: { gap: 12 },
+  gapSm: { gap: 6 },
   row: { flexDirection: "row", gap: 8 },
   flex: { flex: 1 },
   input: { backgroundColor: theme.colors.surface },
+  inputOutline: { borderRadius: 10 },
   hostInput: { flex: 3 },
   portInput: { flex: 1 },
+  btn: { borderRadius: 10 },
+  btnSm: { borderRadius: 8 },
   fileRow: { paddingLeft: 0 },
+  fileName: { fontSize: 14 },
+  label: {
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    color: MUTED,
+  },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: { borderColor: theme.colors.outline },
-  div: { marginBottom: 8, backgroundColor: theme.colors.outlineVariant },
-  spin: { marginRight: 16 },
-  bar2: { borderRadius: 2 },
-  logLine: { fontFamily: mono, fontSize: 11, color: theme.colors.onSurfaceVariant },
+  monoSm: { fontFamily: mono, fontSize: 12 },
+  scanMsg: { fontFamily: mono, fontSize: 12, color: MUTED },
+  code: {
+    backgroundColor: theme.colors.surfaceVariant,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  codeText: { fontFamily: mono, fontSize: 12, color: MUTED },
 });
