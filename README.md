@@ -1,8 +1,8 @@
 # local-file-sharing (LocalDrop)
 
-Send files between devices on the local network — phone to phone, or phone to PC.
+Send files between devices on the local network -> phone to phone, or phone to PC.
 
-An Expo / React Native app (`localdrop` on screen) plus two small Go helpers for testing against a known-good peer. The app can both send and receive, so two phones running it can share files directly — the Go tools are only needed when a PC is one of the sides. Everything speaks the same tiny TCP protocol, with UDP-broadcast discovery so the sender finds receivers without typing IPs.
+An Expo / React Native app (`localdrop` on screen) plus two small Go helpers for testing against a known-good peer. The app can both send and receive, so two phones running it can share files directly; the Go tools are only needed when a PC is one of the sides. Everything speaks the same tiny TCP protocol, with UDP-broadcast discovery so the sender finds receivers without typing IPs.
 
 ## How it works
 
@@ -16,18 +16,18 @@ An Expo / React Native app (`localdrop` on screen) plus two small Go helpers for
 
 ## Repo layout
 
-| Path | What |
-|---|---|
-| `App.tsx` | Whole UI: Receive card (listen/stop + CLI hint) and Send card (pick file, host/port, discovered + recent peers, scan/test, progress) |
-| `src/config.ts` | Default port (`PORT = 5000`) |
-| `src/theme.ts` | Material 3 dark theme (zinc surfaces, white primary) |
-| `src/lib/protocol.ts` | Header/reply encode + decode (shared wire format) |
-| `src/lib/transfer.ts` | `sendFile()` and `startReceiver()` (TCP, 32 KB chunks, over-read-safe) |
-| `src/lib/discover.ts` | UDP discovery, verified TCP probe, subnet sweep, `isLocalhost` guard |
-| `src/lib/format.ts` | `fmtSize()` |
-| `tools/recv/main.go` | Reference receiver + UDP discovery responder + firewall setup; saves to `tools/received/` |
-| `tools/send/main.go` | One-shot sender (test rig for either receiver) |
-| `tools/test.txt` | Tiny fixture for send tests |
+| Path                  | What                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `App.tsx`             | Whole UI: Receive card (listen/stop + CLI hint) and Send card (pick file, host/port, discovered + recent peers, scan/test, progress) |
+| `src/config.ts`       | Default port (`PORT = 5000`)                                                                                                         |
+| `src/theme.ts`        | Material 3 dark theme (zinc surfaces, white primary)                                                                                 |
+| `src/lib/protocol.ts` | Header/reply encode + decode (shared wire format)                                                                                    |
+| `src/lib/transfer.ts` | `sendFile()` and `startReceiver()` (TCP, 32 KB chunks, over-read-safe)                                                               |
+| `src/lib/discover.ts` | UDP discovery, verified TCP probe, subnet sweep, `isLocalhost` guard                                                                 |
+| `src/lib/format.ts`   | `fmtSize()`                                                                                                                          |
+| `tools/recv/main.go`  | Reference receiver + UDP discovery responder + firewall setup; saves to `tools/received/`                                            |
+| `tools/send/main.go`  | One-shot sender (test rig for either receiver)                                                                                       |
+| `tools/test.txt`      | Tiny fixture for send tests                                                                                                          |
 
 ## Requirements
 
@@ -53,7 +53,7 @@ npx expo run:android
 
 In the app (phone to phone: start the receiver on one phone, send from the other):
 
-1. **Receive → listen :5000** on the device you want to send *to*. Note the `IP:port` in the header.
+1. **Receive → listen :5000** on the device you want to send _to_. Note the `IP:port` in the header.
 2. On the sender: pick a file, enter the receiver's host (or tap **Scan** and pick a discovered chip), then **Send**.
 3. **Test** runs one verified probe against the typed host — use it when a scan entry looks stale.
 
@@ -85,12 +85,12 @@ go run ./send -addr host:port -file <path> -deadline 60s
 
 ## Troubleshooting
 
-| Symptom | Likely cause / fix |
-|---|---|
-| Scan finds nothing | Receiver not listening, different subnet/VLAN, or AP isolation on guest Wi-Fi. Type the IP manually and hit **Test**. |
-| Found but send times out | Stale scan entry or wrong device (bare-open port, not LocalDrop). Rescan, then **Test** — only verified peers are listed. |
-| `localhost` doesn't work | Expected: on the sender, localhost is the sender itself. Use the LAN IP shown in the app header / `recv` log. |
-| Windows can't be reached | Allow the firewall prompt, or run `recv` once elevated so it can add the LAN-only rule. |
+| Symptom                             | Likely cause / fix                                                                                                          |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Scan finds nothing                  | Receiver not listening, different subnet/VLAN, or AP isolation on guest Wi-Fi. Type the IP manually and hit **Test**.       |
+| Found but send times out            | Stale scan entry or wrong device (bare-open port, not LocalDrop). Rescan, then **Test** — only verified peers are listed.   |
+| `localhost` doesn't work            | Expected: on the sender, localhost is the sender itself. Use the LAN IP shown in the app header / `recv` log.               |
+| Windows can't be reached            | Allow the firewall prompt, or run `recv` once elevated so it can add the LAN-only rule.                                     |
 | Scan works, send stalls right after | Router flood protection from aggressive sweeping — this app broadcasts once over UDP instead; wait a few seconds and retry. |
 
 ## License
