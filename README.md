@@ -1,56 +1,107 @@
-# Welcome to your Expo app 👋
+# local-file-sharing (LocalDrop)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Send files between a phone and a PC over the local network — no cloud, no accounts, no cables.
 
-## Get started
+An Expo / React Native app (`localdrop` on screen) plus two small Go helpers for testing against a known-good peer. Everything speaks the same tiny TCP protocol, with UDP-broadcast discovery so the phone finds receivers without typing IPs.
 
-1. Install dependencies
+## How it works
 
-   ```bash
-   npm install
-   ```
+- **Receiver** listens on TCP `:5000` (configurable in `src/config.ts`).
+- **Sender** connects, sends one header line `{"name":"<base>","size":<bytes>}\n`, waits for `ok\n` / `no\n`, then streams exactly `size` body bytes.
+- **Discovery** has two layers:
+  1. UDP broadcast `{"discover":true}` → receivers answer with a unicast `{"localdrop":"recv","tcp":<port>}` ad (1–2 packets, router-friendly).
+  2. Verified TCP probe: connect, send `{"discover":true}`, expect a LocalDrop ad back. Bare-open ports (routers, printers, dev servers) stay silent and are never listed.
+- The phone app also has a **Test** button: a single verified probe with step logging, so you can tell "network problem" from "app problem".
+- The Go receiver auto-registers a LAN-scoped Windows Firewall rule (TCP+UDP) on first run (one UAC prompt, bypass with `-no-firewall`).
 
-2. Start the app
+## Repo layout
 
-   ```bash
-   npx expo start
-   ```
+| Path | What |
+|---|---|
+| `App.tsx` | Whole UI: Receive card (listen/stop + CLI hint) and Send card (pick file, host/port, discovered + recent peers, scan/test, progress) |
+| `src/config.ts` | Default port (`PORT = 5000`) |
+| `src/theme.ts` | Material 3 dark theme (zinc surfaces, white primary) |
+| `src/lib/protocol.ts` | Header/reply encode + decode (shared wire format) |
+| `src/lib/transfer.ts` | `sendFile()` and `startReceiver()` (TCP, 32 KB chunks, over-read-safe) |
+| `src/lib/discover.ts` | UDP discovery, verified TCP probe, subnet sweep, `isLocalhost` guard |
+| `src/lib/format.ts` | `fmtSize()` |
+| `tools/recv/main.go` | Reference receiver + UDP discovery responder + firewall setup; saves to `tools/received/` |
+| `tools/send/main.go` | One-shot sender (test rig for either receiver) |
+| `tools/test.txt` | Tiny fixture for send tests |
 
-In the output, you'll find options to open the app in a
+## Requirements
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Same Wi-Fi / LAN for phone and PC (localhost on the phone is the phone, not the PC — the UI warns about this).
+- Node 20+ and npm.
+- Android Studio / SDK for on-device builds (the app uses native TCP + UDP modules, so it needs a [development build](https://docs.expo.dev/develop/development-builds/introduction/) — Expo Go is not enough).
+- Go 1.27+ only if you want the `tools/` helpers.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Quickstart
 
-## Get a fresh project
-
-When you're ready, run:
+### 1. Phone app
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Then build to a device on the same LAN:
 
-### Other setup steps
+```bash
+npx expo run:android
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+In the app:
 
-## Learn more
+1. **Receive → listen :5000** on the device you want to send *to*. Note the `IP:port` in the header.
+2. On the sender: pick a file, enter the receiver's host (or tap **Scan** and pick a discovered chip), then **Send**.
+3. **Test** runs one verified probe against the typed host — use it when a scan entry looks stale.
 
-To learn more about developing your project with Expo, look at the following resources:
+### 2. Go reference peers
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+cd tools
 
-## Join the community
+# terminal 1: listen (prints reachable LAN IPs, saves into tools/received/)
+go run ./recv
 
-Join our community of developers creating universal apps.
+# terminal 2: push a file to a receiver (phone or PC)
+go run ./send -addr 192.168.1.42:5000 -file ./test.txt
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Useful flags:
+
+```bash
+go run ./recv -addr :5000 -decline        # test the decline path
+go run ./recv -no-firewall               # skip Windows Firewall setup
+go run ./send -addr host:port -file <path> -deadline 60s
+```
+
+## Configuration
+
+- Port: `src/config.ts` (`PORT`), mirrored by the Go `-addr` flags.
+- Received files: phone → app cache dir; Go `recv` → `tools/received/` (git-ignored, never overwrites its own directory).
+- Filenames are `filepath.Base()`-sanitized on both sides; empty names / negative sizes are rejected with `no\n`.
+
+## Scripts
+
+| Command | Purpose |
+|---|---|
+| `npm start` | `expo start` |
+| `npm run android` | `expo run:android` (dev build) |
+| `npm run ios` | `expo run:ios` |
+| `npm run lint` | `expo lint` |
+
+## Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---|---|
+| Scan finds nothing | Receiver not listening, different subnet/VLAN, or AP isolation on guest Wi-Fi. Type the IP manually and hit **Test**. |
+| Found but send times out | Stale scan entry or wrong device (bare-open port, not LocalDrop). Rescan, then **Test** — only verified peers are listed. |
+| `localhost` doesn't work | Expected: on the phone, localhost is the phone. Use the LAN IP shown in the app header / `recv` log. |
+| Windows can't be reached | Allow the firewall prompt, or run `recv` once elevated so it can add the LAN-only rule. |
+| Scan works, send stalls right after | Router flood protection from aggressive sweeping — this app broadcasts once over UDP instead; wait a few seconds and retry. |
+
+## License
+
+MIT — see [LICENSE](LICENSE). Built with [Expo](https://expo.dev).
