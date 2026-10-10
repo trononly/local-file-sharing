@@ -15,7 +15,7 @@ import {
 } from "react-native-paper";
 import * as Network from "expo-network";
 import { File } from "expo-file-system";
-import TcpSocket from "react-native-tcp-socket";
+import type TcpSocket from "react-native-tcp-socket";
 import { PORT } from "@/config";
 import { theme, mono } from "@/theme";
 import { sendFile, startReceiver } from "@/lib/transfer";
@@ -99,7 +99,9 @@ export default function App() {
       if (found.length === 0) {
         setScanMsg("no receivers found");
       } else {
-        setScanMsg(`${found.length} receiver${found.length > 1 ? "s" : ""} found`);
+        setScanMsg(
+          `${found.length} receiver${found.length > 1 ? "s" : ""} found`,
+        );
         if (!host) setHost(found[0].host);
       }
     } catch (e) {
@@ -137,11 +139,8 @@ export default function App() {
     setProgress(0);
     try {
       const f = new File(fileUri);
-      const n = await sendFile(
-        host.trim(),
-        port,
-        f,
-        ({ sent, total }) => setProgress(total ? sent / total : 0),
+      const n = await sendFile(host.trim(), port, f, ({ sent, total }) =>
+        setProgress(total ? sent / total : 0),
       );
       setSnack(`Sent ${f.name} (${fmtSize(n)})`);
       remember(host.trim());
@@ -168,30 +167,36 @@ export default function App() {
             <Card mode="outlined" style={styles.card}>
               <Card.Content style={styles.cardPad}>
                 <View style={styles.sectionHead}>
-                  <List.Icon icon="download" color={MUTED} style={styles.headIcon} />
+                  <List.Icon
+                    icon="download"
+                    color={MUTED}
+                    style={styles.headIcon}
+                  />
                   <View style={styles.sectionText}>
                     <Text style={styles.cardTitle}>Receive</Text>
                     <Text style={styles.cardSub}>
-                      {server ? "Accepting incoming files" : "Start the receiver"}
+                      {server
+                        ? "Accepting incoming files"
+                        : "Start the receiver"}
                     </Text>
                   </View>
                 </View>
                 <View style={styles.gap}>
-                <Button
-                  mode={server ? "outlined" : "contained"}
-                  icon={server ? "stop" : "play"}
-                  onPress={toggleServer}
-                  style={styles.btn}
-                >
-                  {server ? "stop" : `listen :${port}`}
-                </Button>
-                {server && (
-                  <View style={styles.code}>
-                    <Text style={styles.codeText}>
-                      ./tools/send -addr {ip}:{port} -file {"<path>"}
-                    </Text>
-                  </View>
-                )}
+                  <Button
+                    mode={server ? "outlined" : "contained"}
+                    icon={server ? "stop" : "play"}
+                    onPress={toggleServer}
+                    style={styles.btn}
+                  >
+                    {server ? "stop" : `listen :${port}`}
+                  </Button>
+                  {server && (
+                    <View style={styles.code}>
+                      <Text style={styles.codeText}>
+                        ./tools/send -addr {ip}:{port} -file {"<path>"}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </Card.Content>
             </Card>
@@ -199,134 +204,145 @@ export default function App() {
             <Card mode="outlined" style={styles.card}>
               <Card.Content style={styles.cardPad}>
                 <View style={styles.sectionHead}>
-                  <List.Icon icon="upload" color={MUTED} style={styles.headIcon} />
+                  <List.Icon
+                    icon="upload"
+                    color={MUTED}
+                    style={styles.headIcon}
+                  />
                   <View style={styles.sectionText}>
                     <Text style={styles.cardTitle}>Send</Text>
-                    <Text style={styles.cardSub}>Pick a file and a destination</Text>
+                    <Text style={styles.cardSub}>
+                      Pick a file and a destination
+                    </Text>
                   </View>
                 </View>
                 <View style={styles.gap}>
-                <List.Item
-                  title={fileName || "No file selected"}
-                  description={fileName ? fmtSize(fileSize) : "Choose a file"}
-                  titleStyle={fileName ? styles.fileName : styles.dim}
-                  descriptionStyle={styles.dim}
-                  left={(p) => (
-                    <List.Icon {...p} icon="file-outline" color={MUTED} />
+                  <List.Item
+                    title={fileName || "No file selected"}
+                    description={fileName ? fmtSize(fileSize) : "Choose a file"}
+                    titleStyle={fileName ? styles.fileName : styles.dim}
+                    descriptionStyle={styles.dim}
+                    left={(p) => (
+                      <List.Icon {...p} icon="file-outline" color={MUTED} />
+                    )}
+                    right={() => (
+                      <Button
+                        mode="contained-tonal"
+                        compact
+                        onPress={pick}
+                        style={styles.btnSm}
+                      >
+                        Browse
+                      </Button>
+                    )}
+                    style={styles.fileRow}
+                  />
+                  <View style={styles.row}>
+                    <TextInput
+                      label="Host"
+                      value={host}
+                      onChangeText={setHost}
+                      placeholder="192.168.1.x"
+                      autoCapitalize="none"
+                      mode="outlined"
+                      dense
+                      outlineStyle={styles.inputOutline}
+                      style={[styles.input, styles.hostInput]}
+                    />
+                    <TextInput
+                      label="Port"
+                      value={portStr}
+                      onChangeText={setPortStr}
+                      keyboardType="numeric"
+                      autoCapitalize="none"
+                      mode="outlined"
+                      dense
+                      outlineStyle={styles.inputOutline}
+                      style={[styles.input, styles.portInput]}
+                    />
+                  </View>
+                  {isLocalhost(host) && !!host && (
+                    <Text variant="bodySmall" style={styles.warn}>
+                      Localhost refers to this phone, not the peer.
+                    </Text>
                   )}
-                  right={() => (
-                    <Button mode="contained-tonal" compact onPress={pick} style={styles.btnSm}>
-                      Browse
+                  {peers.length > 0 && (
+                    <View style={styles.gapSm}>
+                      <Text style={styles.label}>Discovered</Text>
+                      <View style={styles.chips}>
+                        {peers.map((p) => (
+                          <Chip
+                            key={p.host}
+                            selected={host === p.host}
+                            showSelectedCheck={false}
+                            icon="laptop"
+                            mode="outlined"
+                            compact
+                            onPress={() => {
+                              setHost(p.host);
+                              remember(p.host);
+                            }}
+                            style={styles.chip}
+                            textStyle={styles.monoSm}
+                          >
+                            {p.name ? `${p.name} · ${p.host}` : p.host}
+                          </Chip>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                  {recent.length > 0 && (
+                    <View style={styles.gapSm}>
+                      <Text style={styles.label}>Recent</Text>
+                      <View style={styles.chips}>
+                        {recent.map((h) => (
+                          <Chip
+                            key={h}
+                            icon="history"
+                            mode="outlined"
+                            compact
+                            onPress={() => setHost(h)}
+                            style={styles.chip}
+                            textStyle={styles.monoSm}
+                          >
+                            {h}
+                          </Chip>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                  {!!scanMsg && <Text style={styles.scanMsg}>{scanMsg}</Text>}
+                  <View style={styles.row}>
+                    <Button
+                      mode="contained-tonal"
+                      icon="radar"
+                      onPress={scan}
+                      loading={scanning}
+                      disabled={scanning}
+                      style={[styles.flex, styles.btn]}
+                    >
+                      Scan
                     </Button>
-                  )}
-                  style={styles.fileRow}
-                />
-                <View style={styles.row}>
-                  <TextInput
-                    label="Host"
-                    value={host}
-                    onChangeText={setHost}
-                    placeholder="192.168.1.x"
-                    autoCapitalize="none"
-                    mode="outlined"
-                    dense
-                    outlineStyle={styles.inputOutline}
-                    style={[styles.input, styles.hostInput]}
-                  />
-                  <TextInput
-                    label="Port"
-                    value={portStr}
-                    onChangeText={setPortStr}
-                    keyboardType="numeric"
-                    autoCapitalize="none"
-                    mode="outlined"
-                    dense
-                    outlineStyle={styles.inputOutline}
-                    style={[styles.input, styles.portInput]}
-                  />
-                </View>
-                {isLocalhost(host) && !!host && (
-                  <Text variant="bodySmall" style={styles.warn}>
-                    Localhost refers to this phone, not the peer.
-                  </Text>
-                )}
-                {peers.length > 0 && (
-                  <View style={styles.gapSm}>
-                    <Text style={styles.label}>Discovered</Text>
-                    <View style={styles.chips}>
-                      {peers.map((p) => (
-                        <Chip
-                          key={p.host}
-                          selected={host === p.host}
-                          showSelectedCheck={false}
-                          icon="laptop"
-                          mode="outlined"
-                          compact
-                          onPress={() => {
-                            setHost(p.host);
-                            remember(p.host);
-                          }}
-                          style={styles.chip}
-                          textStyle={styles.monoSm}
-                        >
-                          {p.name ? `${p.name} · ${p.host}` : p.host}
-                        </Chip>
-                      ))}
-                    </View>
+                    <Button
+                      mode="outlined"
+                      icon="lan-connect"
+                      onPress={test}
+                      disabled={!host || isLocalhost(host)}
+                      style={[styles.flex, styles.btn]}
+                    >
+                      Test
+                    </Button>
                   </View>
-                )}
-                {recent.length > 0 && (
-                  <View style={styles.gapSm}>
-                    <Text style={styles.label}>Recent</Text>
-                    <View style={styles.chips}>
-                      {recent.map((h) => (
-                        <Chip
-                          key={h}
-                          icon="history"
-                          mode="outlined"
-                          compact
-                          onPress={() => setHost(h)}
-                          style={styles.chip}
-                          textStyle={styles.monoSm}
-                        >
-                          {h}
-                        </Chip>
-                      ))}
-                    </View>
-                  </View>
-                )}
-                {!!scanMsg && <Text style={styles.scanMsg}>{scanMsg}</Text>}
-                <View style={styles.row}>
+                  {busy && <ProgressBar progress={progress} />}
                   <Button
-                    mode="contained-tonal"
-                    icon="radar"
-                    onPress={scan}
-                    loading={scanning}
-                    disabled={scanning}
-                    style={[styles.flex, styles.btn]}
+                    mode="contained"
+                    icon="send"
+                    onPress={send}
+                    disabled={busy || !fileUri || !host}
+                    style={styles.btn}
                   >
-                    Scan
+                    {busy ? `Sending ${Math.round(progress * 100)}%` : "Send"}
                   </Button>
-                  <Button
-                    mode="outlined"
-                    icon="lan-connect"
-                    onPress={test}
-                    disabled={!host || isLocalhost(host)}
-                    style={[styles.flex, styles.btn]}
-                  >
-                    Test
-                  </Button>
-                </View>
-                {busy && <ProgressBar progress={progress} />}
-                <Button
-                  mode="contained"
-                  icon="send"
-                  onPress={send}
-                  disabled={busy || !fileUri || !host}
-                  style={styles.btn}
-                >
-                  {busy ? `Sending ${Math.round(progress * 100)}%` : "Send"}
-                </Button>
                 </View>
               </Card.Content>
             </Card>

@@ -1,7 +1,5 @@
 import { MD3DarkTheme, type MD3Theme } from "react-native-paper";
 
-// shadcn zinc + Material 3 structure: monochrome surfaces, white primary
-// (shadcn default button), tonal grays, M3 outlined cards, 12dp radii.
 export const theme: MD3Theme = {
   ...MD3DarkTheme,
   roundness: 12,

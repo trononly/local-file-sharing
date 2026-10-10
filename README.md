@@ -16,18 +16,18 @@ An Expo / React Native app (`localdrop` on screen) plus two small Go helpers for
 
 ## Repo layout
 
-| Path                  | What                                                                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `App.tsx`             | Whole UI: Receive card (listen/stop + CLI hint) and Send card (pick file, host/port, discovered + recent peers, scan/test, progress) |
-| `src/config.ts`       | Default port (`PORT = 5000`)                                                                                                         |
-| `src/theme.ts`        | Material 3 dark theme (zinc surfaces, white primary)                                                                                 |
-| `src/lib/protocol.ts` | Header/reply encode + decode (shared wire format)                                                                                    |
-| `src/lib/transfer.ts` | `sendFile()` and `startReceiver()` (TCP, 32 KB chunks, over-read-safe)                                                               |
-| `src/lib/discover.ts` | UDP discovery, verified TCP probe, subnet sweep, `isLocalhost` guard                                                                 |
-| `src/lib/format.ts`   | `fmtSize()`                                                                                                                          |
-| `tools/recv/main.go`  | Reference receiver + UDP discovery responder + firewall setup; saves to `tools/received/`                                            |
-| `tools/send/main.go`  | One-shot sender (test rig for either receiver)                                                                                       |
-| `tools/test.txt`      | Tiny fixture for send tests                                                                                                          |
+| Path                  | What                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| `App.tsx`             | Whole UI                                                                                  |
+| `src/config.ts`       | Default port (`PORT = 5000`)                                                              |
+| `src/theme.ts`        | Theme                                                                                     |
+| `src/lib/protocol.ts` | Header/reply encode + decode (shared wire format)                                         |
+| `src/lib/transfer.ts` | `sendFile()` and `startReceiver()` (TCP, 32 KB chunks, over-read-safe)                    |
+| `src/lib/discover.ts` | UDP discovery, verified TCP probe, subnet sweep, `isLocalhost` guard                      |
+| `src/lib/format.ts`   | `fmtSize()`                                                                               |
+| `tools/recv/main.go`  | Reference receiver + UDP discovery responder + firewall setup; saves to `tools/received/` |
+| `tools/send/main.go`  | One-shot sender (test rig for either receiver)                                            |
+| `tools/test.txt`      | Tiny fixture for send tests                                                               |
 
 ## Requirements
 
@@ -92,7 +92,3 @@ go run ./send -addr host:port -file <path> -deadline 60s
 | `localhost` doesn't work            | Expected: on the sender, localhost is the sender itself. Use the LAN IP shown in the app header / `recv` log.               |
 | Windows can't be reached            | Allow the firewall prompt, or run `recv` once elevated so it can add the LAN-only rule.                                     |
 | Scan works, send stalls right after | Router flood protection from aggressive sweeping — this app broadcasts once over UDP instead; wait a few seconds and retry. |
-
-## License
-
-MIT — see [LICENSE](LICENSE). Built with [Expo](https://expo.dev).
